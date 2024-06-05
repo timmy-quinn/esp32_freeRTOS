@@ -23,6 +23,7 @@ void toggleLED(void * parameter) {
 void setup() {
   pinMode(led_pin, OUTPUT); 
 
+  Serial.begin(300); 
   xTaskCreatePinnedToCore(    //use xTaskCreate() is used in vanilla FreeRTOS
               toggleLED,      //fuction to be called     
               "Toggle LED",   // Task name
