@@ -26,23 +26,28 @@ struct _listMember
   listMember* nextMember; 
 };
 
-listMember * firstMember = NULL;
-listMember * currMember = NULL;  
+listMember *firstMember = NULL;
+listMember *currMember = NULL;  
 
 
 //Add an item to a linked list
 void addListMember(char newInput)
 {
-  currMember->nextMember = (listMember*)pvPortMalloc(sizeof(listMember)); //Allocate memory for a new list item. Add it to the list. 
-  if(currMember->nextMember == NULL)
-  {
-    return;
-  }
-  currMember = currMember->nextMember; // Update it so that the current member points to the newly created member
+  Serial.println("New character: "); 
+  Serial.println(newInput);
+
+  listMember *prevMember;
+  prevMember = currMember; 
+  currMember = (listMember*)pvPortMalloc(sizeof(listMember)); //Allocate memory for a new list item. Add it to the list. 
+
+  currMember->nextMember = NULL; 
   currMember->input = newInput; 
-  currMember->nextMember = currMember; 
-  if(firstMember == NULL) {
+
+  if(prevMember == NULL){ //Check to see if this is the first member added to the linked list
     firstMember = currMember; 
+  }
+  else{ //If there are previously existing linked list members, update the previous to point to the new addition
+    prevMember->nextMember = currMember; 
   }
 }
 
@@ -51,29 +56,36 @@ void tsk_readSerial(void * parameter) {
   while(1) {
     if (Serial.available() > 0) {
       newChar = Serial.read();
-      if(newChar == '0x0D')
+      addListMember(newChar); //Add member to linked list
+      if(newChar == 0x0D)
       {
+        Serial.println("Endline character"); 
         vTaskResume(hnl_printSerial);
         vTaskSuspend(hnl_readSerial); 
       } 
-      else{
-        addListMember(newChar); //Add member to linked list
-      }
     }
   }
 }
 
 void tsk_printSerial(void * parameter) {
-  listMember* toBeErased; 
-  if(firstMember->input == NULL)
-  {
-    vTaskResume(hnl_readSerial); 
-    vTaskSuspend(hnl_printSerial);
-  }
-  Serial.print(firstMember->input); 
-  toBeErased = firstMember; 
-  firstMember = firstMember->nextMember; 
-  vPortFree(toBeErased); 
+  listMember* printMember; 
+  while(1){
+    //Serial.println("Print serial task"); 
+    printMember = firstMember; 
+    if(printMember == NULL) {
+      Serial.println(); 
+      Serial.println("firstMember = null"); 
+      currMember = NULL; 
+      vTaskResume(hnl_readSerial);
+      vTaskSuspend(NULL);
+      Serial.println("Returning");  
+    }
+    else {
+      Serial.print(printMember->input); 
+      firstMember = printMember->nextMember; //Move the first pointer to point to the next member in the list
+      vPortFree(printMember);
+    }
+  } 
 }
 
 void setup() {
@@ -89,16 +101,16 @@ void setup() {
   Serial.print(" with priority "); 
   Serial.println(uxTaskPriorityGet(NULL)); 
 
-  // Task to run forever
+  //Task to run forever
   xTaskCreatePinnedToCore(tsk_printSerial, 
                           "Serial Print", 
-                          1024, 
+                          5000, 
                           NULL, 
                           1, 
                           &hnl_printSerial, 
                           app_cpu);
 
-  Serial.print("first task created"); 
+  Serial.println("first task created"); 
 
   xTaskCreatePinnedToCore(tsk_readSerial, 
                           "Serial read", 
@@ -107,8 +119,8 @@ void setup() {
                           1, 
                           &hnl_readSerial, 
                           app_cpu);
-  Serial.print("2nd task created"); 
-  vTaskResume(hnl_printSerial);
+  Serial.println("2nd task created"); 
+  //vTaskResume(hnl_printSerial);
   
 }
 
