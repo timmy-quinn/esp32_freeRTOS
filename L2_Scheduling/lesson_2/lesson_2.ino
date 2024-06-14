@@ -1,3 +1,11 @@
+/*
+ * ************DigiKey Introduction to RTOS Part 3******************
+ * Topic: Task Scheduling
+ * Problem: Write a task to toggle an LED pin. Write another task that reads serial inputs, and changes the ON/OFF times of LED
+ * https://www.youtube.com/watch?v=Qske3yZRW5I&list=PLEBQazB0HUyQ4hAPU1cJED6t3DU0h34bz&index=4
+ * FreeRTOS file path: C:\..\Arduino15\packages\esp32\hardware\esp32\2.0.5\tools\sdk\esp32\include\freertos
+*/ 
+
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0; 
 #else
@@ -149,7 +157,4 @@ void setup() {
   
 }
 
-void loop() 
-{
-  
-}
+void loop() {}

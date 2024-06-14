@@ -1,11 +1,17 @@
+/*
+ * ************DigiKey Introduction to RTOS Part 2******************
+ * Topic: Getting started
+ * Problem: Write a task to toggle an LED pin
+ * https://www.youtube.com/watch?v=Qske3yZRW5I&list=PLEBQazB0HUyQ4hAPU1cJED6t3DU0h34bz&index=4
+ * FreeRTOS file path: C:\..\Arduino15\packages\esp32\hardware\esp32\2.0.5\tools\sdk\esp32\include\freertos
+*/ 
+ 
+
 #if CONFIG_FREERTOS_UNICORE
 static const BaseType_t app_cpu = 0; 
 #else 
 static const BaseType_t app_cpu = 1; 
 #endif
-
-// FreeRTOS file path
-// C:\Users\tquin\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.5\tools\sdk\esp32\include\freertos
 
 //Pins
 static const int led_pin = LED_BUILTIN; 

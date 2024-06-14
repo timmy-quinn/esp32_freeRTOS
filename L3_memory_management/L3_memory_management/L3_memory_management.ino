@@ -1,14 +1,17 @@
+/*
+ * ************ DigiKey Introduction to RTOS Part 4******************
+ * Topic: Memory management
+ * Problem: Write a task that reads serial inputs, and another task that prints them, upon end line character
+ * https://www.youtube.com/watch?v=Qske3yZRW5I&list=PLEBQazB0HUyQ4hAPU1cJED6t3DU0h34bz&index=4
+ * File path: C:\..\Arduino15\packages\esp32\hardware\esp32\2.0.5\tools\sdk\esp32\include\freertos
+*/ 
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0; 
 #else
   static const BaseType_t app_cpu = 1; 
 #endif
 
-#define TIMEOUT     10
-#define NUM_DIGITS  10
-
-// FreeRTOS file path
-// C:\Users\tquin\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.5\tools\sdk\esp32\include\freertos
+#define END_CHAR 0x0D
 
 const char msg[] = "Hey how's it going?"; 
 unsigned char delayTimeDigits[NUM_DIGITS]; 
@@ -17,11 +20,12 @@ static TaskHandle_t hnl_printSerial = NULL;
 static TaskHandle_t hnl_readSerial = NULL; 
 static const int led_pin = LED_BUILTIN; 
 
+bool printChars = false; 
+
 
 //Simple linked list implementation
 typedef struct _listMember listMember;
-struct _listMember
-{
+struct _listMember {
   char input; 
   listMember* nextMember; 
 };
@@ -29,11 +33,9 @@ struct _listMember
 listMember *firstMember = NULL;
 listMember *currMember = NULL;  
 
-
 //Add an item to a linked list
 void addListMember(char newInput)
 {
-  Serial.println("New character: "); 
   Serial.println(newInput);
 
   listMember *prevMember;
@@ -51,45 +53,46 @@ void addListMember(char newInput)
   }
 }
 
+
+// Read serial messages and add chars to linked list until carriage return is reached
 void tsk_readSerial(void * parameter) {
   uint8_t newChar; 
+
   while(1) {
     if (Serial.available() > 0) {
       newChar = Serial.read();
       addListMember(newChar); //Add member to linked list
-      if(newChar == 0x0D)
-      {
-        Serial.println("Endline character"); 
-        vTaskResume(hnl_printSerial);
-        vTaskSuspend(hnl_readSerial); 
+      if(newChar == END_CHAR) {
+        printChars = true;
       } 
     }
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
+// Print the linked list to the screen
 void tsk_printSerial(void * parameter) {
   listMember* printMember; 
   while(1){
-    //Serial.println("Print serial task"); 
-    printMember = firstMember; 
-    if(printMember == NULL) {
-      Serial.println(); 
-      Serial.println("firstMember = null"); 
-      currMember = NULL; 
-      vTaskResume(hnl_readSerial);
-      vTaskSuspend(NULL);
-      Serial.println("Returning");  
+    if(printChars) {
+      printMember = firstMember; 
+      if(printMember == NULL) { //Reached the end of the linked list
+        printChars = false;
+        currMember = NULL; 
+      }
+      else {
+        Serial.print(printMember->input); 
+        firstMember = printMember->nextMember; //Move the first pointer to point to the next member in the list
+        vPortFree(printMember);
+      }
     }
-    else {
-      Serial.print(printMember->input); 
-      firstMember = printMember->nextMember; //Move the first pointer to point to the next member in the list
-      vPortFree(printMember);
-    }
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   } 
 }
 
+//Setup 
 void setup() {
-  Serial.begin(115200); 
+  Serial.begin(19200); 
 
   vTaskDelay(1000 / portTICK_PERIOD_MS); 
   Serial.println(); 
@@ -124,4 +127,4 @@ void setup() {
   
 }
 
-void loop(){}
+void loop() {}
