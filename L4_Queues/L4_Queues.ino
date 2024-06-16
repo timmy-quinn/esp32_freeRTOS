@@ -30,6 +30,7 @@
 #define MAX_DELAY_CMD_LEN         12
 #define MAX_MESSAGE_LEN           15
 #define TWOBYTE_DIGITS_DEC        5
+#define BLINK_MSG_THRESHOLD       100
 
 typedef struct _messageItem {
   char str[MAX_MESSAGE_LEN];
@@ -55,6 +56,8 @@ static QueueHandle_t queue_2;
 
 static messageItem_t messageBuff; 
 static char blinkMessage[] = "Blinked";
+
+static const int led_pin = LED_BUILTIN; 
 
 listMember *firstMember = NULL;
 listMember *currMember = NULL;  
@@ -107,7 +110,6 @@ void printList(void) {
 // Free the linked list
 void freeList(void) {
 
-  Serial.println("Free members"); 
   listMember* freeMember; 
   freeMember = firstMember; 
   while(freeMember != NULL) {
@@ -118,6 +120,9 @@ void freeList(void) {
   currMember = NULL; 
 }
 
+
+// This function is ugly but no real point in optimizing at this point. 
+// Maybe use a doubly linked list? Or add index parameter to LL item, or count variable?
 uint16_t isDelayCommand() {
   if(firstMember == NULL) { return 0; } 
 
@@ -140,26 +145,28 @@ uint16_t isDelayCommand() {
 
   Serial.println("Delay string found"); 
 
-  for(numDigits = 0; numDigits < TWOBYTE_DIGITS_DEC; numDigits++)
+  for(numDigits = 0; (checkMember != NULL ) && (checkMember->input != END_CHAR); numDigits++)
   {
     Serial.print("Numdigits"); 
     Serial.println(numDigits); 
     Serial.print("checkMember->input"); 
     Serial.println(checkMember->input); 
-    if((checkMember->nextMember == NULL ) || (checkMember->input == END_CHAR)){
-      Serial.println("breaking"); 
-      break; 
-    }
+    // if((checkMember->nextMember == NULL ) || (checkMember->input == END_CHAR)){
+    //   Serial.println("breaking"); 
+    //   break; 
+    // }
     if((checkMember->input < '0') || (checkMember->input > '9')) {
       return 0; 
     }
 
     numStr[numDigits] = checkMember->input -'0'; 
 
-    if(checkMember->nextMember != NULL) {
-      checkMember = checkMember->nextMember;
-    }
+    // if(checkMember->nextMember != NULL) {
+    checkMember = checkMember->nextMember;
+    // }
   }
+
+  if(numDigits > TWOBYTE_DIGITS_DEC) { return 0xffff; } 
 
   Serial.println("delay found"); 
   Serial.println((int)numStr[0]); 
@@ -174,8 +181,9 @@ uint16_t isDelayCommand() {
   return result; 
 }
 
-void receiveSerialInput()
+uint16_t receiveSerialInput()
 { 
+  uint16_t delay; 
   char newChar; 
   while(Serial.available() > 0) {
     newChar = Serial.read(); 
@@ -184,51 +192,77 @@ void receiveSerialInput()
       continue; 
     }
   }
-  isDelayCommand(); 
+  delay = isDelayCommand(); 
   printList(); 
   freeList(); 
+  return delay;
 }
 
 void tsk_A(void * parameter) {
   messageItem_t msg; 
   char newChar; 
+  uint16_t delay; 
   while(1)
   {
     //Serial.println("Task A"); 
     if(xQueueReceive(queue_1, (void *)&msg, 0) ==pdTRUE)
     {
-      Serial.println("Message received"); 
+      Serial.print("Message length "); 
+      Serial.println(msg.len); 
       for(uint8_t i = 0; i < msg.len; i++) {
         Serial.print(msg.str[i]); 
       }
     }
 
-    receiveSerialInput(); 
-
-    vTaskDelay(300 / portTICK_PERIOD_MS);  
+    delay = receiveSerialInput(); 
+    if(delay) {
+      if (xQueueSend(queue_2, (void *)&delay, 10) != pdTRUE) {
+        Serial.println("Queue full"); 
+      }
+    }
+    
+    vTaskDelay(10);
   }
 }
 
 void tsk_B(void * parameter) {
+  uint16_t delay; 
+  uint16_t tempDelay; 
+  uint8_t blinks; 
   while(1) {
-    // Serial.println("Task B"); 
-    // messageItem_t msg; 
-    // strlcpy(&msg.str[0], "Blinked", sizeof("Blinked")); 
-    // msg.len = sizeof("Blinked"); 
-    // msg.numBlinks = 10; 
-    // if(xQueueSend(queue_1, (void *)&msg, 10) != pdTRUE) {
-    //   Serial.println("Queue 1 full");
-    // }
-    // Serial.println("Msg sent"); 
-    vTaskDelay(300 / portTICK_PERIOD_MS); 
+    if(xQueueReceive(queue_2, (void *)&tempDelay, 0) ==pdTRUE)
+    {
+      delay = tempDelay; 
+    }
+
+    digitalWrite(led_pin, HIGH); 
+    vTaskDelay(delay / portTICK_PERIOD_MS); 
+    digitalWrite(led_pin, LOW); 
+    vTaskDelay(delay / portTICK_PERIOD_MS);
+    blinks++; 
+    if(blinks == BLINK_MSG_THRESHOLD) {
+      //Serial.println("Task B"); 
+      messageItem_t msg; 
+      strlcpy(&msg.str[0], "Blinked", sizeof("Blinked")); 
+      msg.len = sizeof("Blinked"); 
+      msg.numBlinks = blinks; 
+      if(xQueueSend(queue_1, (void *)&msg, 10) != pdTRUE) {
+        Serial.println("Queue 1 full");
+      }
+      Serial.println("Msg sent"); 
+      blinks = 0; 
+    }
+    //vTaskDelay(delay / portTICK_PERIOD_MS); 
   }
 }
 
 void setup() {
   Serial.begin(19200);
   Serial.println("Printing"); 
+  pinMode(led_pin, OUTPUT); 
 
   queue_1 = xQueueCreate(5, sizeof(messageItem_t)); // Create queue before using it in tasks
+  queue_2 = xQueueCreate(10, sizeof(uint16_t)); 
 
   BaseType_t result = xTaskCreatePinnedToCore(tsk_A, 
                                               "task A", 
@@ -258,12 +292,9 @@ void setup() {
 }
 
 
-// This stupid function is required for arduino to build this code.
+// This function is required for arduino to build this code.
 // Can't be deleted so just stick a delay in there to prevent it from hogging every tick
 void loop() { 
   vTaskDelay(0xffff); 
   Serial.println("Stupid loop"); // This is stupid, therefor print stupid
 }
-
-
-// Notes
